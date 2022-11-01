@@ -1,0 +1,38 @@
+[package]
+name = "network-discovery"
+version = "0.1.0"
+authors = ["Aptos Labs <opensource@aptoslabs.com>"]
+description = "Aptos Network Peer Discovery"
+repository = "https://github.com/aptos-labs/aptos-core"
+homepage = "https://aptoslabs.com"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.57"
+bcs = { git = "https://github.com/aptos-labs/bcs", rev = "2cde3e8446c460cb17b0c1d6bac7e27e964ac169" }
+futures = "0.3.21"
+once_cell = "1.10.0"
+serde_yaml = "0.8.24"
+tokio = { version = "1.21.0", features = ["full"] }
+
+aptos-config = { path = "../../config" }
+aptos-crypto = { path = "../../crates/aptos-crypto" }
+aptos-logger = { path = "../../crates/aptos-logger" }
+aptos-metrics-core = { path = "../../crates/aptos-metrics-core" }
+aptos-secure-storage = { path = "../../secure/storage" }
+aptos-time-service = { path = "../../crates/aptos-time-service" }
+aptos-types = { path = "../../types" }
+
+channel = { path = "../../crates/channel" }
+event-notifications = { path = "../../state-sync/inter-component/event-notifications" }
+network = { path = "../../network" }
+short-hex-str = { path = "../../crates/short-hex-str" }
+
+[dev-dependencies]
+rand = "0.7.3"
+
+aptos-config = { path = "../../config", features = ["testing"] }
+aptos-temppath = { path = "../../crates/aptos-temppath" }
+netcore = { path = "../netcore", features = ["fuzzing"] }

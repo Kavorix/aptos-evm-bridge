@@ -1,0 +1,25 @@
+[package]
+name = "transaction-emitter"
+version = "0.0.0"
+authors = ["Aptos Labs <opensource@aptoslabs.com>"]
+description = "Aptos transaction emitter for testing"
+repository = "https://github.com/aptos-labs/aptos-core"
+homepage = "https://aptoslabs.com"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "1.0.57", features = ["backtrace"] }
+clap = "3.1.17"
+futures = "0.3.21"
+itertools = "0.10.3"
+rand = "0.7.3"
+rand_core = "0.5.1"
+tokio = { version = "1.21.0", features = ["full"] }
+
+aptos-global-constants = { path = "../../config/global-constants" }
+aptos-logger = { path = "../../crates/aptos-logger" }
+aptos-sdk = { path = "../../sdk" }
+
+transaction-emitter-lib = { path = "../../crates/transaction-emitter-lib" }

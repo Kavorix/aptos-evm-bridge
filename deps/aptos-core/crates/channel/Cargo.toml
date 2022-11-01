@@ -1,0 +1,22 @@
+[package]
+name = "channel"
+version = "0.1.0"
+authors = ["Aptos Labs <opensource@aptoslabs.com>"]
+description = "An implementation of a channel with configurable QoS"
+repository = "https://github.com/aptos-labs/aptos-core"
+homepage = "https://aptoslabs.com"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.57"
+futures = "0.3.21"
+
+aptos-infallible = { path = "../../crates/aptos-infallible" }
+aptos-metrics-core = { path = "../../crates/aptos-metrics-core" }
+
+[dev-dependencies]
+tokio = { version = "1.21.0", features = ["full"] }
+
+aptos-types = { path = "../../types" }

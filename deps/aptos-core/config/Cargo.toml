@@ -1,0 +1,39 @@
+[package]
+name = "aptos-config"
+version = "0.1.0"
+authors = ["Aptos Labs <opensource@aptoslabs.com>"]
+description = "Aptos config"
+repository = "https://github.com/aptos-labs/aptos-core"
+homepage = "https://aptoslabs.com"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.57"
+bcs = { git = "https://github.com/aptos-labs/bcs", rev = "2cde3e8446c460cb17b0c1d6bac7e27e964ac169" }
+get_if_addrs = { version = "0.5.3", default-features = false }
+mirai-annotations = "1.12.0"
+poem-openapi = { version = "2.0.10", features = ["url"] }
+rand = "0.7.3"
+serde = { version = "1.0.137", features = ["rc"], default-features = false }
+serde_yaml = "0.8.24"
+thiserror = "1.0.31"
+
+aptos-crypto = { path = "../crates/aptos-crypto" }
+aptos-crypto-derive = { path = "../crates/aptos-crypto-derive" }
+aptos-global-constants = { path = "./global-constants" }
+aptos-logger = { path = "../crates/aptos-logger" }
+aptos-secure-storage = { path = "../secure/storage" }
+aptos-temppath = { path = "../crates/aptos-temppath" }
+aptos-types = { path = "../types" }
+
+short-hex-str = { path = "../crates/short-hex-str" }
+
+[dev-dependencies]
+aptos-crypto = { path = "../crates/aptos-crypto", features = ["fuzzing"] }
+
+[features]
+default = []
+fuzzing = ["aptos-crypto/fuzzing", "aptos-types/fuzzing"]
+testing = []

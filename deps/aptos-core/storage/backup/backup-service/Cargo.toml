@@ -1,0 +1,37 @@
+[package]
+name = "backup-service"
+version = "0.1.0"
+authors = ["Aptos Labs <opensource@aptoslabs.com>"]
+repository = "https://github.com/aptos-labs/aptos-core"
+homepage = "https://aptoslabs.com"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.57"
+bcs = { git = "https://github.com/aptos-labs/bcs", rev = "2cde3e8446c460cb17b0c1d6bac7e27e964ac169" }
+bytes = "1.1.0"
+hyper = "0.14.18"
+once_cell = "1.10.0"
+serde = { version = "1.0.137", default-features = false }
+tokio = { version = "1.21.0", features = ["full"] }
+warp = "0.3.2"
+
+aptos-crypto = { path = "../../../crates/aptos-crypto" }
+aptos-logger = { path = "../../../crates/aptos-logger" }
+aptos-metrics-core = { path = "../../../crates/aptos-metrics-core" }
+aptos-types = { path = "../../../types" }
+
+aptosdb = { path = "../../aptosdb" }
+storage-interface = { path = "../../storage-interface" }
+
+[dev-dependencies]
+reqwest = { version = "0.11.10", features = ["blocking", "json"], default_features = false }
+
+aptos-config = { path = "../../../config" }
+aptos-temppath = { path = "../../../crates/aptos-temppath" }
+aptosdb = { path = "../../aptosdb", features = ["fuzzing"] }
+
+[features]
+fuzzing = ["aptosdb/fuzzing"]
