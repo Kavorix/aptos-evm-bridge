@@ -1,7 +1,7 @@
 import * as crossChainHelper from "./utils/crossChainHelper"
 import { ethers } from "ethers"
 import { TOKEN_ADDRESSES } from "./config/addresses"
-import { CHAIN_ID } from "@layerzerolabs/core-sdk"
+import { CHAIN_ID } from "@layerzerolabs/lz-sdk"
 import { CoinType } from "../../../sdk/src/modules/apps/coin"
 
 const abiDecoder = require("abi-decoder")

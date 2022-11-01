@@ -1,4 +1,4 @@
-import { CHAIN_STAGE, ChainStage } from "@layerzerolabs/core-sdk"
+import { CHAIN_STAGE, ChainStage } from "@layerzerolabs/lz-sdk"
 
 module.exports = async function ({ deployments, getNamedAccounts, network }) {
     const { deploy } = deployments

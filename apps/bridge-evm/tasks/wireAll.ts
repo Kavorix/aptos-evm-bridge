@@ -1,7 +1,7 @@
 import * as crossChainHelper from "./utils/crossChainHelper"
 import { Transaction } from "./utils/crossChainHelper"
 import { arrayToCsv, validateStageOfNetworks } from "../../../sdk/tasks/utils"
-import { CHAIN_STAGE, ChainStage } from "@layerzerolabs/core-sdk"
+import { CHAIN_STAGE, ChainStage } from "@layerzerolabs/lz-sdk"
 import { BRIDGE_ADDRESS as APTOS_BRIDGE_ADDRESS } from "../../../sdk/src/constants"
 import { ethers } from "ethers"
 import { TOKEN_ADDRESSES } from "./config/addresses"

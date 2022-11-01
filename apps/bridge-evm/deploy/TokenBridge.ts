@@ -1,4 +1,4 @@
-import { ChainId, CHAIN_STAGE, LZ_ADDRESS, ChainStage } from "@layerzerolabs/core-sdk"
+import { ChainId, CHAIN_STAGE, LZ_ADDRESS, ChainStage } from "@layerzerolabs/lz-sdk"
 import * as crossChainHelper from "../tasks/utils/crossChainHelper"
 
 module.exports = async function ({ ethers, deployments, getNamedAccounts, network }) {

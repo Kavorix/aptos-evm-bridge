@@ -1,4 +1,4 @@
-import { ChainId } from "@layerzerolabs/core-sdk"
+import { ChainId } from "@layerzerolabs/lz-sdk"
 import { BridgeCoinType, CoinType } from "../../../../../sdk/src/modules/apps/coin"
 import { getDeploymentAddresses } from "../../utils/readStatic"
 import {

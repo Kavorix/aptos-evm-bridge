@@ -1,6 +1,6 @@
 import * as ethers from "ethers"
 import { getDeploymentAddresses, getRpc } from "./readStatic"
-import { CHAIN_ID } from "@layerzerolabs/core-sdk"
+import { CHAIN_ID } from "@layerzerolabs/lz-sdk"
 import { cli } from "cli-ux"
 import { ContractReceipt } from "ethers"
 import { createProvider } from "hardhat/internal/core/providers/construction"

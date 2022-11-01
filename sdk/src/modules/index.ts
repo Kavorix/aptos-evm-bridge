@@ -7,7 +7,6 @@ import { MsgLibConfig } from "./msglib_config"
 import { ExecutorConfig } from "./executor_config"
 import { MsgLibAuth } from "./msglib_auth"
 
-export * as counter from "./apps/counter"
 export * as bridge from "./apps/bridge"
 export * as coin from "./apps/coin"
 export * as oracle from "./apps/oracle"

@@ -1,4 +1,4 @@
-import { ChainId } from "@layerzerolabs/core-sdk"
+import { ChainId } from "@layerzerolabs/lz-sdk"
 import { CoinType } from "../../../../sdk/src/modules/apps/coin"
 import { PacketType } from "./types"
 import { getConfig } from "../../../../sdk/tasks/config/testnet"

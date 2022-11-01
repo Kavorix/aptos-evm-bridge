@@ -1,4 +1,4 @@
-import { ChainId } from "@layerzerolabs/core-sdk"
+import { ChainId } from "@layerzerolabs/lz-sdk"
 
 type SandboxChainId = ChainId.GOERLI_SANDBOX | ChainId.ARBITRUM_GOERLI_SANDBOX | ChainId.OPTIMISM_GOERLI_SANDBOX
 

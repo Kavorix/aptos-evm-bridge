@@ -1,4 +1,4 @@
-import { ChainId } from "@layerzerolabs/core-sdk"
+import { ChainId } from "@layerzerolabs/lz-sdk"
 
 type MainnetChainId = ChainId.ETHEREUM | ChainId.BSC | ChainId.AVALANCHE | ChainId.POLYGON | ChainId.ARBITRUM | ChainId.OPTIMISM | ChainId.FANTOM
 
