@@ -1,6 +1,5 @@
 module bridge::token_bridge {
     use std::error;
-    use std::string;
     use std::vector;
     use std::signer::{address_of};
 
@@ -8,9 +7,8 @@ module bridge::token_bridge {
     use aptos_std::event::{Self, EventHandle};
     use aptos_std::type_info::{Self, TypeInfo};
     use aptos_std::from_bcs::to_address;
-    use aptos_std::math64;
 
-    use aptos_token::token::{Self, Token, TokenId};
+    use aptos_token::token::{Self, Token, TokenStore, CollectionData, TokenId};
     use aptos_framework::account;
 
     use layerzero_common::serde;
@@ -49,19 +47,28 @@ module bridge::token_bridge {
         remote_token_addr: vector<u8>,
     }
 
-    struct TokenTypeStore has key {
-        type_lookup: Table<Path, TypeInfo>,
-        types: vector<TypeInfo>,
-    }
-
     struct LzCapability has key {
         cap: UaCapability<BridgeUA>
     }
 
     struct Config has key {
         paused_global: bool,
-        paused_tokens: Table<TypeInfo, bool>, // token type -> paused
         custom_adapter_params: bool,
+    }
+
+    struct CollectionStore has key {
+        remote_collections: Table<CollectionData, bool>
+    }
+
+
+    // This struct stores an NFT collection's information
+    struct CollectionTokenMinter has key {
+        public_key: ed25519::ValidatedPublicKey,
+        signer_cap: account::SignerCapability,
+        token_data_id: CollectionData,
+        expiration_timestamp: u64,
+        minting_enabled: bool,
+        token_minting_events: EventHandle<TokenMintingEvent>,
     }
 
     struct RemoteToken has store, drop {
@@ -70,19 +77,6 @@ module bridge::token_bridge {
         tvl_sd: u64,
         // whether the token can be unwrapped into native token on remote chain, like WETH -> ETH on ethereum, WBNB -> BNB on BSC
         unwrappable: bool,
-    }
-
-    struct TokenStore<phantom TokenType> has key {
-        ld2sd_rate: u64,
-        // chainId -> remote token
-        remote_tokens: Table<u64, RemoteToken>,
-        // chain id of remote tokens
-        remote_chains: vector<u64>,
-        claimable_amt_ld: Table<address, u64>,
-        // token caps
-        mint_cap: MintCapability<TokenType>,
-        burn_cap: BurnCapability<TokenType>,
-        freeze_cap: FreezeCapability<TokenType>,
     }
 
     struct EventStore has key {
@@ -122,13 +116,7 @@ module bridge::token_bridge {
 
         move_to(account, Config {
             paused_global: false,
-            paused_tokens: table::new(),
             custom_adapter_params: false,
-        });
-
-        move_to(account, TokenTypeStore {
-            type_lookup: table::new(),
-            types: vector::empty(),
         });
 
         move_to(account, EventStore {
@@ -138,31 +126,31 @@ module bridge::token_bridge {
         });
     }
 
-    // one registered TokenType can have multiple remote tokens, e.g. ETH-USDC and AVAX-USDC
-    public entry fun set_remote_token<TokenType>(
+    // one registered CollectionData can be used from bridge
+    public entry fun set_remote_collection<CollectionData>(
         account: &signer,
         remote_chain_id: u64,
         remote_token_addr: vector<u8>,
         unwrappable: bool,
-    ) acquires TokenStore, TokenTypeStore {
+    ) acquires CollectionStore, CollectionDataStore {
         assert_signer(account, @bridge);
         assert_u16(remote_chain_id);
         assert_length(&remote_token_addr, 32);
-        assert_registered_token<TokenType>();
+        assert_registered_collection<CollectionData>();
 
-        let token_store = borrow_global_mut<TokenStore<TokenType>>(@bridge);
-        assert!(!table::contains(&token_store.remote_tokens, remote_chain_id), error::invalid_argument(EBRIDGE_TOKEN_ALREADY_EXISTS));
+        let token_store = borrow_global_mut<CollectionStore<CollectionData>>(@bridge);
+        assert!(!table::contains(&token_store.remote_collections, remote_chain_id), error::invalid_argument(EBRIDGE_TOKEN_ALREADY_EXISTS));
 
         let remote_token = RemoteToken {
             remote_address: remote_token_addr,
             tvl_sd: 0,
             unwrappable,
         };
-        table::add(&mut token_store.remote_tokens, remote_chain_id, remote_token);
+        table::add(&mut token_store.remote_collections, remote_chain_id, remote_token);
         vector::push_back(&mut token_store.remote_chains, remote_chain_id);
 
-        let type_store = borrow_global_mut<TokenTypeStore>(@bridge);
-        table::add(&mut type_store.type_lookup, Path { remote_chain_id, remote_token_addr }, type_info::type_of<TokenType>());
+        let type_store = borrow_global_mut<CollectionDataStore>(@bridge);
+        table::add(&mut type_store.type_lookup, Path { remote_chain_id, remote_token_addr }, type_info::type_of<CollectionData>());
     }
 
     public entry fun set_global_pause(account: &signer, paused: bool) acquires Config {
@@ -172,13 +160,6 @@ module bridge::token_bridge {
         config.paused_global = paused;
     }
 
-    public entry fun set_pause<TokenType>(account: &signer, paused: bool) acquires Config {
-        assert_signer(account, @bridge);
-        assert_registered_token<TokenType>();
-
-        let config = borrow_global_mut<Config>(@bridge);
-        table::upsert(&mut config.paused_tokens, type_info::type_of<TokenType>(), paused);
-    }
 
     public entry fun enable_custom_adapter_params(account: &signer, enabled: bool) acquires Config {
         assert_signer(account, @bridge);
@@ -187,33 +168,33 @@ module bridge::token_bridge {
         config.custom_adapter_params = enabled;
     }
 
-    public fun get_token_capabilities<TokenType>(account: &signer): (MintCapability<TokenType>, BurnCapability<TokenType>, FreezeCapability<TokenType>) acquires TokenStore {
+    public fun get_token_capabilities<CollectionData>(account: &signer): (MintCapability<CollectionData>, BurnCapability<CollectionData>, FreezeCapability<CollectionData>) acquires CollectionStore {
         assert_signer(account, @bridge);
-        assert_registered_token<TokenType>();
+        assert_registered_collection<CollectionData>();
 
-        let token_store = borrow_global<TokenStore<TokenType>>(@bridge);
+        let token_store = borrow_global<CollectionStore<CollectionData>>(@bridge);
         (token_store.mint_cap, token_store.burn_cap, token_store.freeze_cap)
     }
 
     //
     // token transfer functions
     //
-    public fun send_token<TokenType>(
-        token: Token<TokenType>,
+    public fun send_token<CollectionData>(
+        token: Token<CollectionData>,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
         fee: Token<AptosToken>,
         unwrap: bool,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): Token<AptosToken> acquires TokenStore, EventStore, Config, LzCapability {
+    ): Token<AptosToken> acquires CollectionStore, EventStore, Config, LzCapability {
         let (native_refund, zro_refund) = send_token_with_zro(token, dst_chain_id, dst_receiver, fee, token::zero<ZRO>(), unwrap, adapter_params, msglib_params);
         token::destroy_zero(zro_refund);
         native_refund
     }
 
-    public fun send_token_with_zro<TokenType>(
-        token: Token<TokenType>,
+    public fun send_token_with_zro<CollectionData>(
+        token: Token<CollectionData>,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
         native_fee: Token<AptosToken>,
@@ -221,9 +202,9 @@ module bridge::token_bridge {
         unwrap: bool,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): (Token<AptosToken>, Token<ZRO>) acquires TokenStore, EventStore, Config, LzCapability {
+    ): (Token<AptosToken>, Token<ZRO>) acquires CollectionStore, EventStore, Config, LzCapability {
         let amount_ld = token::value(&token);
-        let send_amount_ld = remove_dust_ld<TokenType>(token::value(&token));
+        let send_amount_ld = remove_dust_ld<CollectionData>(token::value(&token));
         if (amount_ld > send_amount_ld) {
             // remove the dust and deposit into the bridge account
             let dust = token::extract(&mut token, amount_ld - send_amount_ld);
@@ -234,7 +215,7 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun send_token_from<TokenType>(
+    public entry fun send_token_from<CollectionData>(
         sender: &signer,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
@@ -244,9 +225,9 @@ module bridge::token_bridge {
         unwrap: bool,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ) acquires TokenStore, EventStore, Config, LzCapability {
-        let send_amt_ld = remove_dust_ld<TokenType>(amount_ld);
-        let token = token::withdraw<TokenType>(sender, send_amt_ld);
+    ) acquires CollectionStore, EventStore, Config, LzCapability {
+        let send_amt_ld = remove_dust_ld<CollectionData>(amount_ld);
+        let token = token::withdraw<CollectionData>(sender, send_amt_ld);
         let native_fee = withdraw_token_if_needed<AptosToken>(sender, native_fee);
         let zro_fee = withdraw_token_if_needed<ZRO>(sender, zro_fee);
 
@@ -258,8 +239,8 @@ module bridge::token_bridge {
         deposit_token_if_needed(sender_addr, zro_refund);
     }
 
-    fun send_token_internal<TokenType>(
-        token: Token<TokenType>,
+    fun send_token_internal<CollectionData>(
+        token: Token<CollectionData>,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
         native_fee: Token<AptosToken>,
@@ -267,15 +248,15 @@ module bridge::token_bridge {
         unwrap: bool,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): (Token<AptosToken>, Token<ZRO>) acquires TokenStore, EventStore, Config, LzCapability {
-        assert_registered_token<TokenType>();
-        assert_unpaused<TokenType>();
+    ): (Token<AptosToken>, Token<ZRO>) acquires CollectionStore, EventStore, Config, LzCapability {
+        assert_registered_collection<CollectionData>();
+        assert_unpaused<CollectionData>();
         assert_u16(dst_chain_id);
         assert_length(&dst_receiver, 32);
 
         // assert that the remote token is configured
-        let token_store = borrow_global_mut<TokenStore<TokenType>>(@bridge);
-        assert!(table::contains(&token_store.remote_tokens, dst_chain_id), error::not_found(EBRIDGE_REMOTE_TOKEN_NOT_FOUND));
+        let token_store = borrow_global_mut<CollectionStore<CollectionData>>(@bridge);
+        assert!(table::contains(&token_store.remote_collections, dst_chain_id), error::not_found(EBRIDGE_REMOTE_TOKEN_NOT_FOUND));
 
         // the dust value of the token has been removed
         let amount_ld = token::value(&token);
@@ -283,10 +264,10 @@ module bridge::token_bridge {
         assert!(amount_sd > 0, error::invalid_argument(EBRIDGE_SENDING_AMOUNT_TOO_FEW));
 
         // try to insert into the limiter. abort if overflowed
-        limiter::try_insert<TokenType>(amount_sd);
+        limiter::try_insert<CollectionData>(amount_sd);
 
         // assert remote chain has enough liquidity
-        let remote_token = table::borrow_mut(&mut token_store.remote_tokens, dst_chain_id);
+        let remote_token = table::borrow_mut(&mut token_store.remote_collections, dst_chain_id);
         assert!(remote_token.tvl_sd >= amount_sd, error::invalid_argument(EBRIDGE_INSUFFICIENT_LIQUIDITY));
         remote_token.tvl_sd = remote_token.tvl_sd - amount_sd;
 
@@ -321,7 +302,7 @@ module bridge::token_bridge {
         event::emit_event<SendEvent>(
             &mut event_store.send_events,
             SendEvent {
-                token_type: type_info::type_of<TokenType>(),
+                token_type: type_info::type_of<CollectionData>(),
                 dst_chain_id,
                 dst_receiver,
                 amount_ld,
@@ -332,9 +313,9 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun lz_receive<TokenType>(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires TokenStore, EventStore, Config, LzCapability {
-        assert_registered_token<TokenType>();
-        assert_unpaused<TokenType>();
+    public entry fun lz_receive<CollectionData>(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionStore, EventStore, Config, LzCapability {
+        assert_registered_collection<CollectionData>();
+        assert_unpaused<CollectionData>();
         assert_u16(src_chain_id);
 
         // assert the payload is valid
@@ -346,9 +327,9 @@ module bridge::token_bridge {
         let (remote_token_addr, receiver_bytes, amount_sd) = decode_receive_payload(&payload);
 
         // assert remote_token_addr
-        let token_store = borrow_global_mut<TokenStore<TokenType>>(@bridge);
-        assert!(table::contains(&token_store.remote_tokens, src_chain_id), error::not_found(EBRIDGE_REMOTE_TOKEN_NOT_FOUND));
-        let remote_token = table::borrow_mut(&mut token_store.remote_tokens, src_chain_id);
+        let token_store = borrow_global_mut<CollectionStore<CollectionData>>(@bridge);
+        assert!(table::contains(&token_store.remote_collections, src_chain_id), error::not_found(EBRIDGE_REMOTE_TOKEN_NOT_FOUND));
+        let remote_token = table::borrow_mut(&mut token_store.remote_collections, src_chain_id);
         assert!(remote_token_addr == remote_token.remote_address, error::invalid_argument(EBRIDGE_INVALID_TOKEN_TYPE));
 
         // add to tvl
@@ -358,7 +339,7 @@ module bridge::token_bridge {
 
         // stash if the receiver has not yet registered to receive the token
         let receiver = to_address(receiver_bytes);
-        let stashed = !token::is_account_registered<TokenType>(receiver);
+        let stashed = !token::is_account_registered<CollectionData>(receiver);
         if (stashed) {
             let claimable_ld = table::borrow_mut_with_default(&mut token_store.claimable_amt_ld, receiver, 0);
             *claimable_ld = *claimable_ld + amount_ld;
@@ -372,7 +353,7 @@ module bridge::token_bridge {
         event::emit_event(
             &mut event_store.receive_events,
             ReceiveEvent {
-                token_type: type_info::type_of<TokenType>(),
+                token_type: type_info::type_of<CollectionData>(),
                 src_chain_id,
                 receiver,
                 amount_ld,
@@ -381,18 +362,18 @@ module bridge::token_bridge {
         );
     }
 
-    public entry fun claim_token<TokenType>(receiver: &signer) acquires TokenStore, EventStore, Config {
-        assert_registered_token<TokenType>();
-        assert_unpaused<TokenType>();
+    public entry fun claim_token<CollectionData>(receiver: &signer) acquires CollectionStore, EventStore, Config {
+        assert_registered_collection<CollectionData>();
+        assert_unpaused<CollectionData>();
 
         // register the user if needed
         let receiver_addr = address_of(receiver);
-        if (!token::is_account_registered<TokenType>(receiver_addr)) {
-            token::register<TokenType>(receiver);
+        if (!token::is_account_registered<CollectionData>(receiver_addr)) {
+            token::register<CollectionData>(receiver);
         };
 
         // assert the receiver has receivable and it is more than 0
-        let token_store = borrow_global_mut<TokenStore<TokenType>>(@bridge);
+        let token_store = borrow_global_mut<CollectionStore<CollectionData>>(@bridge);
         assert!(table::contains(&token_store.claimable_amt_ld, receiver_addr), error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
         let claimable_ld = table::remove(&mut token_store.claimable_amt_ld, receiver_addr);
         assert!(claimable_ld > 0, error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
@@ -405,7 +386,7 @@ module bridge::token_bridge {
         event::emit_event(
             &mut event_store.claim_events,
             ClaimEvent {
-                token_type: type_info::type_of<TokenType>(),
+                token_type: type_info::type_of<CollectionData>(),
                 receiver: receiver_addr,
                 amount_ld: claimable_ld,
             }
@@ -415,41 +396,41 @@ module bridge::token_bridge {
     //
     // public view functions
     //
-    public fun lz_receive_types(src_chain_id: u64, _src_address: vector<u8>, payload: vector<u8>): vector<TypeInfo> acquires TokenTypeStore {
+    public fun lz_receive_types(src_chain_id: u64, _src_address: vector<u8>, payload: vector<u8>): vector<TypeInfo> acquires CollectionDataStore {
         let (remote_token_addr, _receiver, _amount) = decode_receive_payload(&payload);
         let path = Path { remote_chain_id: src_chain_id, remote_token_addr };
 
-        let type_store = borrow_global<TokenTypeStore>(@bridge);
+        let type_store = borrow_global<CollectionDataStore>(@bridge);
         let token_type_info = table::borrow(&type_store.type_lookup, path);
 
         vector::singleton<TypeInfo>(*token_type_info)
     }
 
-    public fun has_token_registered<TokenType>(): bool {
-        exists<TokenStore<TokenType>>(@bridge)
+    public fun has_token_registered<CollectionData>(): bool {
+        exists<CollectionStore<CollectionData>>(@bridge)
     }
 
     public fun quote_fee(dst_chain_id: u64, pay_in_zro: bool, adapter_params: vector<u8>, msglib_params: vector<u8>): (u64, u64) {
         endpoint::quote_fee(@bridge, dst_chain_id, SEND_PAYLOAD_SIZE, pay_in_zro, adapter_params, msglib_params)
     }
 
-    public fun remove_dust_ld<TokenType>(amount_ld: u64): u64 acquires TokenStore {
-        let token_store = borrow_global<TokenStore<TokenType>>(@bridge);
+    public fun remove_dust_ld<CollectionData>(amount_ld: u64): u64 acquires CollectionStore {
+        let token_store = borrow_global<CollectionStore<CollectionData>>(@bridge);
         amount_ld / token_store.ld2sd_rate * token_store.ld2sd_rate
     }
 
     //
     // internal functions
     //
-    fun withdraw_token_if_needed<TokenType>(account: &signer, amount_ld: u64): Token<TokenType> {
+    fun withdraw_token_if_needed<CollectionData>(account: &signer, amount_ld: u64): Token<CollectionData> {
         if (amount_ld > 0) {
-            token::withdraw<TokenType>(account, amount_ld)
+            token::withdraw<CollectionData>(account, amount_ld)
         } else {
-            token::zero<TokenType>()
+            token::zero<CollectionData>()
         }
     }
 
-    fun deposit_token_if_needed<TokenType>(account: address, token: Token<TokenType>) {
+    fun deposit_token_if_needed<CollectionData>(account: address, token: Token<CollectionData>) {
         if (token::value(&token) > 0) {
             token::deposit(account, token);
         } else {
@@ -503,17 +484,12 @@ module bridge::token_bridge {
         }
     }
 
-    fun assert_registered_token<TokenType>() {
-        assert!(has_token_registered<TokenType>(), error::permission_denied(EBRIDGE_UNREGISTERED_TOKEN));
+    fun assert_registered_collection<CollectionData>() {
+        assert!(has_token_registered<CollectionData>(), error::permission_denied(EBRIDGE_UNREGISTERED_TOKEN));
     }
 
-    fun assert_unpaused<TokenType>() acquires Config {
+    fun assert_unpaused<CollectionData>() acquires Config {
         let config = borrow_global<Config>(@bridge);
         assert!(!config.paused_global, error::unavailable(EBRIDGE_PAUSED));
-
-        let token_type = type_info::type_of<TokenType>();
-        if (table::contains(&config.paused_tokens, token_type)) {
-            assert!(!*table::borrow(&config.paused_tokens, token_type), error::unavailable(EBRIDGE_PAUSED));
-        }
     }
 }
