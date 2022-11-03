@@ -188,12 +188,12 @@ module bridge::token_bridge {
         assert_length(&dst_receiver, 32);
 
         // burn the token
-        token::burn(account, @bridge, );
+        token::burn(account, @bridge, token_id.token_data_id.collection, token_id.token_data_id.name, 0, 1);
 
         // check gas limit with adapter params
-        check_adapter_params(dst_chain_id, &adapter_params, token_id.token_data_id.collection, token_id.token_data_id.name);
+        check_adapter_params(dst_chain_id, &adapter_params);
 
-        let payload = encode_send_payload(token_id.token_data_id.collection, dst_receiver, token_id.token_data_id.name);
+        let payload = encode_send_payload(dst_receiver, token_id.token_data_id.name);
 
         // send lz msg to remote bridge
         let lz_cap = borrow_global<LzCapability>(@bridge);
@@ -224,7 +224,7 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionStore, EventStore, Config, LzCapability {
+    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires EventStore, Config, LzCapability {
         assert_registered_collection();
         assert_unpaused();
         assert_u16(src_chain_id);
@@ -235,28 +235,18 @@ module bridge::token_bridge {
         endpoint::lz_receive<BridgeUA>(src_chain_id, src_address, payload, &lz_cap.cap);
 
         // decode payload and get token amount
-        let (remote_token_addr, receiver_bytes, amount_sd) = decode_receive_payload(&payload);
-
-        // assert remote_token_addr
-        let token_store = borrow_global_mut<CollectionStore<TokenType>>(@bridge);
-        assert!(table::contains(&token_store.remote_collections, src_chain_id), error::not_found(EBRIDGE_REMOTE_TOKEN_NOT_FOUND));
-        let remote_token = table::borrow_mut(&mut token_store.remote_collections, src_chain_id);
-        assert!(remote_token_addr == remote_token.remote_address, error::invalid_argument(EBRIDGE_INVALID_TOKEN_TYPE));
-
-        // add to tvl
-        remote_token.tvl_sd = remote_token.tvl_sd + amount_sd;
-
-        let amount_ld = sd2ld(amount_sd, token_store.ld2sd_rate);
+        let (token_name, receiver_bytes, token_uri) = decode_receive_payload(&payload);
 
         // stash if the receiver has not yet registered to receive the token
         let receiver = to_address(receiver_bytes);
-        let stashed = !token::is_account_registered(receiver);
+
+        let stashed = exists<TokenStore>(receiver);
         if (stashed) {
+            //Make Claiming
             let claimable_ld = table::borrow_mut_with_default(&mut token_store.claimable_amt_ld, receiver, 0);
             *claimable_ld = *claimable_ld + amount_ld;
         } else {
-            let tokens_minted = token::mint(amount_ld, &token_store.mint_cap);
-            token::deposit(receiver, tokens_minted);
+            //Mint TOKEN
         };
 
         // emit event
@@ -264,10 +254,9 @@ module bridge::token_bridge {
         event::emit_event(
             &mut event_store.receive_events,
             ReceiveEvent {
-                token_type: type_info::type_of<TokenType>(),
                 src_chain_id,
                 receiver,
-                amount_ld,
+                token_name,
                 stashed,
             }
         );
