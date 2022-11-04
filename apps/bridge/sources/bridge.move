@@ -7,7 +7,6 @@ module bridge::token_bridge {
     use aptos_std::table::{Self, Table};
     use aptos_std::event::{Self, EventHandle};
     use aptos_std::from_bcs::to_address;
-    use aptos_std::from_bcs::to_u64;
 
     use aptos_token::token::{Self, TokenId, get_token_id_fields};
     use aptos_framework::account;
@@ -22,17 +21,10 @@ module bridge::token_bridge {
     use zro::zro::ZRO;
 
     const EBRIDGE_UNREGISTERED_COLLECTION: u64 = 0x00;
-    const EBRIDGE_REMOTE_TOKEN_NOT_FOUND: u64 = 0x01;
-    const EBRIDGE_INVALID_TOKEN_TYPE: u64 = 0x02;
-    const EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND: u64 = 0x03;
-    const EBRIDGE_INSUFFICIENT_LIQUIDITY: u64 = 0x05;
-    const EBRIDGE_INVALID_ADDRESS: u64 = 0x06;
-    const EBRIDGE_INVALID_SIGNER: u64 = 0x07;
-    const EBRIDGE_INVALID_PACKET_TYPE: u64 = 0x08;
-    const EBRIDGE_PAUSED: u64 = 0x09;
-    const EBRIDGE_SENDING_AMOUNT_TOO_FEW: u64 = 0x0a;
-    const EBRIDGE_INVALID_ADAPTER_PARAMS: u64 = 0x0b;
-    const EBRIDGE_COLLECTION_ALREADY_EXISTS: u64 = 0x0c;
+    const EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND: u64 = 0x01;
+    const EBRIDGE_INVALID_PACKET_TYPE: u64 = 0x02;
+    const EBRIDGE_PAUSED: u64 = 0x03;
+    const EBRIDGE_INVALID_ADAPTER_PARAMS: u64 = 0x04;
 
     // paceket type, in line with EVM
     const PRECEIVE: u8 = 0;
