@@ -4,6 +4,8 @@ version = "0.0.1"
 
 [addresses]
 bridge = "_"
+aptos_token = "0x3"
 
 [dependencies]
 layerzero = { local = "../../layerzero" }
+AptosToken = { local = "../../deps/aptos-core/aptos-move/framework/aptos-token" }
