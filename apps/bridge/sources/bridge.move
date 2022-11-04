@@ -93,8 +93,6 @@ module bridge::token_bridge {
 
     fun init_module(account: &signer) {
         let cap = endpoint::register_ua<BridgeUA>(account);
-        let collection_name = string::utf8(b"ONFT");
-        let description = string::utf8(b"Collection Description");
         let collection_uri = string::utf8(b"Collection uri");
 
         // create the nft collection
@@ -123,11 +121,26 @@ module bridge::token_bridge {
         });
         let resource_signer_cap = resource_account::retrieve_resource_account_cap(account, @0xcafe);
         let resource_signer = account::create_signer_with_capability(&resource_signer_cap);
-        token::create_collection(&resource_signer, collection_name, description, collection_uri, maximum_supply, mutate_setting);
+        token::create_collection(&resource_signer, get_collection_name(), get_collection_description(), collection_uri, maximum_supply, mutate_setting);
 
         move_to(account, CollectionTokenMinter {
             signer_cap: resource_signer_cap,
         });
+    }
+
+    public fun get_collection_name(): String {
+        use std::string;
+        string::utf8(b"Collection")
+    }
+
+    public fun get_collection_description(): String {
+        use std::string;
+        string::utf8(b"Description")
+    }
+
+    public fun get_token_uri(u64 token_id): String {
+        use std::string;
+        string::utf8(b"Token URI + token id as string")
     }
 
     public entry fun set_global_pause(account: &signer, paused: bool) acquires Config {
@@ -281,17 +294,16 @@ module bridge::token_bridge {
         let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
         let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
         let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
-        let collection_name = string::utf8(b"ONFT");
         let token_name = string::utf8(b"Token ID: 10");
 
         token::create_token_script(
             &resource_signer,
-            collection_name,
+            get_collection_name(),
             token_name,
             string::utf8(b"Token Description"),
             1,
             1,
-            string::utf8(b"Token URI + Token ID"),
+            get_token_uri(token_id),
             @bridge,
             100,
             0,
