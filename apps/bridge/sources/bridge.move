@@ -94,7 +94,7 @@ module bridge::token_bridge {
     fun init_module(account: &signer) {
         let cap = endpoint::register_ua<BridgeUA>(account);
         let collection_name = string::utf8(b"ONFT");
-        let description = string::utf8(b"Description");
+        let description = string::utf8(b"Collection Description");
         let collection_uri = string::utf8(b"Collection uri");
 
         // create the nft collection
@@ -232,7 +232,7 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionTokenMinter, CollectionStore, EventStore, Config, LzCapability {
+    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionStore, EventStore, Config, LzCapability {
         assert_unpaused();
         assert_u16(src_chain_id);
 
@@ -249,30 +249,6 @@ module bridge::token_bridge {
         
         let collection_store = borrow_global_mut<CollectionStore>(@bridge);
         table::borrow_mut_with_default(&mut collection_store.claimable_id, ClaimData {token_id, receiver_addr: receiver}, true);
-
-        let default_keys = vector<String>[ string::utf8(b"attack"), string::utf8(b"num_of_use") ];
-        let default_vals = vector<vector<u8>>[ bcs::to_bytes<u64>(&10), bcs::to_bytes<u64>(&5) ];
-        let default_types = vector<String>[ string::utf8(b"u64"), string::utf8(b"u64") ];
-        let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
-        let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
-        let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
-
-        token::create_token_script(
-            &resource_signer,
-            string::utf8(b"ONFT"),
-            string::utf8(b"Token: Hello, Token"),
-            string::utf8(b"Description"),
-            1,
-            1,
-            string::utf8(b"https://aptos.dev"),
-            @bridge,
-            100,
-            0,
-            mutate_setting,
-            default_keys,
-            default_vals,
-            default_types,
-        );
         
         // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
@@ -286,7 +262,7 @@ module bridge::token_bridge {
         );
     }
 
-    public entry fun claim_token(receiver: &signer, token_id: u64) acquires CollectionStore, EventStore, Config {
+    public entry fun claim_token(receiver: &signer, token_id: u64) acquires CollectionTokenMinter, CollectionStore, EventStore, Config {
         assert_unpaused();
 
         token::initialize_token_store(receiver);
@@ -299,7 +275,33 @@ module bridge::token_bridge {
         let claimable_ld = table::remove(&mut token_store.claimable_id, ClaimData {token_id, receiver_addr});
         assert!(claimable_ld, error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
 
-        // token::create_token_script()
+        let default_keys = vector<String>[ string::utf8(b"attack"), string::utf8(b"num_of_use") ];
+        let default_vals = vector<vector<u8>>[ bcs::to_bytes<u64>(&10), bcs::to_bytes<u64>(&5) ];
+        let default_types = vector<String>[ string::utf8(b"u64"), string::utf8(b"u64") ];
+        let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
+        let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
+        let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
+        let collection_name = string::utf8(b"ONFT");
+        let token_name = string::utf8(b"Token ID: 10");
+
+        token::create_token_script(
+            &resource_signer,
+            collection_name,
+            token_name,
+            string::utf8(b"Token Description"),
+            1,
+            1,
+            string::utf8(b"Token URI + Token ID"),
+            @bridge,
+            100,
+            0,
+            mutate_setting,
+            default_keys,
+            default_vals,
+            default_types,
+        );
+        let token = token::create_token_id_raw(address_of(&resource_signer), collection_name, token_name, 0);
+        token::direct_transfer(&resource_signer, receiver, token, 1);
 
         // // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
@@ -307,8 +309,7 @@ module bridge::token_bridge {
             &mut event_store.claim_events,
             ClaimEvent {
                 receiver: receiver_addr,
-                // token_id: to_u64(token_id.token_data_id.name),
-                token_id: 1
+                token_id: token_id
             }
         );
     }
