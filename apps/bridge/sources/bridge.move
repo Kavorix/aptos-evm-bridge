@@ -4,6 +4,7 @@ module bridge::token_bridge {
     use std::string::{Self, String};
     use std::signer::{address_of};
 
+    use aptos_std::table::{Self, Table};
     use aptos_std::event::{Self, EventHandle};
     use aptos_std::from_bcs::to_address;
     use aptos_std::from_bcs::to_u64;
@@ -57,6 +58,17 @@ module bridge::token_bridge {
         collection_name: String
     }
 
+    struct ClaimData has copy, drop, key {
+        token_id: u64,
+        receiver_addr: address
+    }
+
+    struct CollectionStore has key {
+        // chain id of remote coins
+        remote_chains: vector<u64>,
+        claimable_id: Table<ClaimData, bool>,
+    }
+
     struct EventStore has key {
         send_events: EventHandle<SendEvent>,
         receive_events: EventHandle<ReceiveEvent>,
@@ -99,6 +111,11 @@ module bridge::token_bridge {
             paused_global: false,
             custom_adapter_params: false,
             collection_name: collection_name,
+        });
+
+        move_to(account, CollectionStore {
+            remote_chains: vector::empty(),
+            claimable_id: table::new(),
         });
 
         move_to(account, EventStore {
@@ -211,7 +228,7 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires EventStore, Config, LzCapability {
+    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionStore, EventStore, Config, LzCapability {
         assert_unpaused();
         assert_u16(src_chain_id);
 
@@ -225,8 +242,10 @@ module bridge::token_bridge {
 
         // stash if the receiver has not yet registered to receive the token
         let receiver = to_address(receiver_bytes);
-        //Make Claiming
-
+        
+        let collection_store = borrow_global_mut<CollectionStore>(@bridge);
+        table::borrow_mut_with_default(&mut collection_store.claimable_id, ClaimData {token_id, receiver_addr: receiver}, true);
+        
         // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
         event::emit_event(
@@ -239,23 +258,20 @@ module bridge::token_bridge {
         );
     }
 
-    public entry fun claim_token(receiver: &signer) acquires EventStore, Config {
+    public entry fun claim_token(receiver: &signer, token_id: u64) acquires CollectionStore, EventStore, Config {
         assert_unpaused();
 
+        token::initialize_token_store(receiver);
         // register the user if needed
         let receiver_addr = address_of(receiver);
-        // if (!token::is_account_registered(receiver_addr)) {
-        //     token::register(receiver);
-        // };
 
-        // // assert the receiver has receivable and it is more than 0
-        // let token_store = borrow_global_mut<CollectionStore<TokenType>>(@bridge);
-        // assert!(table::contains(&token_store.claimable_amt_ld, receiver_addr), error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
-        // let claimable_ld = table::remove(&mut token_store.claimable_amt_ld, receiver_addr);
-        // assert!(claimable_ld > 0, error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
+        // assert the receiver has receivable and it is more than 0
+        let token_store = borrow_global_mut<CollectionStore>(@bridge);
+        assert!(table::contains(&token_store.claimable_id, ClaimData {token_id, receiver_addr}), error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
+        let claimable_ld = table::remove(&mut token_store.claimable_id, ClaimData {token_id, receiver_addr});
+        assert!(claimable_ld, error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
 
-        // let tokens_minted = token::mint(claimable_ld, &token_store.mint_cap);
-        // token::deposit(receiver_addr, tokens_minted);
+        // token::create_token_script()
 
         // // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
