@@ -3,6 +3,7 @@ module bridge::token_bridge {
     use std::vector;
     use std::string::{Self, String};
     use std::signer::{address_of};
+    use std::bcs;
 
     use aptos_std::table::{Self, Table};
     use aptos_std::event::{Self, EventHandle};
@@ -12,6 +13,7 @@ module bridge::token_bridge {
     use aptos_framework::account;
     use aptos_framework::coin::{Self, Coin};
     use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::resource_account;
 
     use layerzero_common::serde;
     use layerzero_common::utils::{vector_slice, assert_u16, assert_signer, assert_length};
@@ -85,6 +87,10 @@ module bridge::token_bridge {
         token_id: u64,
     }
 
+    struct CollectionTokenMinter has key {
+        signer_cap: account::SignerCapability,
+    }
+
     fun init_module(account: &signer) {
         let cap = endpoint::register_ua<BridgeUA>(account);
         let collection_name = string::utf8(b"ONFT");
@@ -115,7 +121,13 @@ module bridge::token_bridge {
             receive_events: account::new_event_handle<ReceiveEvent>(account),
             claim_events: account::new_event_handle<ClaimEvent>(account),
         });
-        token::create_collection(account, collection_name, description, collection_uri, maximum_supply, mutate_setting);
+        let resource_signer_cap = resource_account::retrieve_resource_account_cap(account, @0xcafe);
+        let resource_signer = account::create_signer_with_capability(&resource_signer_cap);
+        token::create_collection(&resource_signer, collection_name, description, collection_uri, maximum_supply, mutate_setting);
+
+        move_to(account, CollectionTokenMinter {
+            signer_cap: resource_signer_cap,
+        });
     }
 
     public entry fun set_global_pause(account: &signer, paused: bool) acquires Config {
@@ -136,7 +148,7 @@ module bridge::token_bridge {
     //
     // token transfer functions
     //
-    public fun send_token(
+    public entry fun send_token(
         account: &signer,
         token_id: TokenId,
         dst_chain_id: u64,
@@ -220,7 +232,7 @@ module bridge::token_bridge {
         (native_refund, zro_refund)
     }
 
-    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionStore, EventStore, Config, LzCapability {
+    public entry fun lz_receive(src_chain_id: u64, src_address: vector<u8>, payload: vector<u8>) acquires CollectionTokenMinter, CollectionStore, EventStore, Config, LzCapability {
         assert_unpaused();
         assert_u16(src_chain_id);
 
@@ -237,6 +249,30 @@ module bridge::token_bridge {
         
         let collection_store = borrow_global_mut<CollectionStore>(@bridge);
         table::borrow_mut_with_default(&mut collection_store.claimable_id, ClaimData {token_id, receiver_addr: receiver}, true);
+
+        let default_keys = vector<String>[ string::utf8(b"attack"), string::utf8(b"num_of_use") ];
+        let default_vals = vector<vector<u8>>[ bcs::to_bytes<u64>(&10), bcs::to_bytes<u64>(&5) ];
+        let default_types = vector<String>[ string::utf8(b"u64"), string::utf8(b"u64") ];
+        let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
+        let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
+        let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
+
+        token::create_token_script(
+            &resource_signer,
+            string::utf8(b"ONFT"),
+            string::utf8(b"Token: Hello, Token"),
+            string::utf8(b"Description"),
+            1,
+            1,
+            string::utf8(b"https://aptos.dev"),
+            @bridge,
+            100,
+            0,
+            mutate_setting,
+            default_keys,
+            default_vals,
+            default_types,
+        );
         
         // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
