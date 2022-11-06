@@ -106,7 +106,7 @@ module bridge::token_bridge {
         move_to(account, Config {
             paused_global: false,
             custom_adapter_params: false,
-            collection_name: collection_name,
+            collection_name: get_collection_name(),
         });
 
         move_to(account, CollectionStore {
@@ -138,9 +138,12 @@ module bridge::token_bridge {
         string::utf8(b"Description")
     }
 
-    public fun get_token_uri(u64 token_id): String {
+    public fun get_token_uri(token_id: u64): String {
         use std::string;
-        string::utf8(b"Token URI + token id as string")
+        let token_uri = string::utf8(b"Token URI");
+        let token_id_in_string = to_string(token_id);
+        string::append(&mut token_uri, token_id_in_string);
+        token_uri
     }
 
     public entry fun set_global_pause(account: &signer, paused: bool) acquires Config {
@@ -169,10 +172,10 @@ module bridge::token_bridge {
         fee: Coin<AptosCoin>,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): Coin<AptosCoin> acquires EventStore, Config, LzCapability {
+    ) acquires EventStore, Config, LzCapability {
         let (native_refund, zro_refund) = send_token_with_zro(account, token_id, dst_chain_id, dst_receiver, fee, coin::zero<ZRO>(), adapter_params, msglib_params);
         coin::destroy_zero(zro_refund);
-        native_refund
+        coin::deposit<AptosCoin>(address_of(account), native_refund);
     }
 
     public fun send_token_with_zro(
@@ -187,7 +190,6 @@ module bridge::token_bridge {
     ): (Coin<AptosCoin>, Coin<ZRO>) acquires EventStore, Config, LzCapability {
 
         let (native_refund, zro_refund) = send_token_internal(account, token_id, dst_chain_id, dst_receiver, native_fee, zro_fee, adapter_params, msglib_params);
-
         (native_refund, zro_refund)
     }
 
@@ -294,7 +296,7 @@ module bridge::token_bridge {
         let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
         let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
         let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
-        let token_name = string::utf8(b"Token ID: 10");
+        let token_name = to_string(token_id);
 
         token::create_token_script(
             &resource_signer,
@@ -312,7 +314,7 @@ module bridge::token_bridge {
             default_vals,
             default_types,
         );
-        let token = token::create_token_id_raw(address_of(&resource_signer), collection_name, token_name, 0);
+        let token = token::create_token_id_raw(address_of(&resource_signer), get_collection_name(), token_name, 0);
         token::direct_transfer(&resource_signer, receiver, token, 1);
 
         // // emit event
@@ -373,5 +375,18 @@ module bridge::token_bridge {
     fun assert_unpaused() acquires Config {
         let config = borrow_global<Config>(@bridge);
         assert!(!config.paused_global, error::unavailable(EBRIDGE_PAUSED));
+    }
+
+    fun to_string(value: u64): String {
+        if (value == 0) {
+            return string::utf8(b"0")
+        };
+        let buffer = vector::empty<u8>();
+        while (value != 0) {
+            vector::push_back(&mut buffer, ((48 + value % 10) as u8));
+            value = value / 10;
+        };
+        vector::reverse(&mut buffer);
+        string::utf8(buffer)
     }
 }

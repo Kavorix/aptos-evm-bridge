@@ -3,36 +3,21 @@
 pragma solidity 0.8.15;
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@layerzerolabs/solidity-examples/contracts/lzApp/NonblockingLzApp.sol";
 import "@layerzerolabs/solidity-examples/contracts/libraries/LzLib.sol";
 
-import "./interfaces/IWETH.sol";
-import "./interfaces/ITokenBridge.sol";
-
-contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
-    using SafeERC20 for IERC20;
-
+contract NFTBridge is NonblockingLzApp, ReentrancyGuard {
     uint public constant BP_DENOMINATOR = 10000;
-    uint8 public constant SHARED_DECIMALS = 6;
-
     uint16 public aptosChainId;
 
     uint public bridgeFeeBP;
-
-    mapping(address => uint64) public tvlSDs; // token address => tvl
-    mapping(address => bool) public supportedTokens;
-    mapping(address => bool) public pausedTokens; // token address => paused
-    mapping(address => uint) public ld2sdRates; // token address => rate
-    address public weth;
-
     bool public useCustomAdapterParams;
     bool public globalPaused;
     bool public emergencyWithdrawEnabled;
     uint public emergencyWithdrawTime;
 
     modifier whenNotPaused(address _token) {
-        require(!globalPaused && !pausedTokens[_token], "TokenBridge: paused");
+        require(!globalPaused, "TokenBridge: paused");
         _;
     }
 
@@ -43,20 +28,19 @@ contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
 
     constructor(
         address _layerZeroEndpoint,
-        uint16 _aptosChainId
+        uint16 _aptosChainId,
+        address _onftAddress
     ) NonblockingLzApp(_layerZeroEndpoint) {
         aptosChainId = _aptosChainId;
+        onftAddress = _onftAddress;
     }
 
     function sendToAptos(
-        address _token,
         bytes32 _toAddress,
-        uint _amountLD,
+        uint _tokenId,
         LzLib.CallParams calldata _callParams,
         bytes calldata _adapterParams
     ) external payable override whenNotPaused(_token) nonReentrant {
-        require(supportedTokens[_token], "TokenBridge: token is not supported");
-
         // lock token
         _amountLD = _removeDust(_token, _amountLD);
         _amountLD = _lockTokenFrom(_token, msg.sender, _amountLD);
@@ -78,7 +62,7 @@ contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
         bytes calldata _adapterParams
     ) external payable override whenNotPaused(weth) nonReentrant {
         address _weth = weth; // save gas
-        require(_weth != address(0) && supportedTokens[_weth], "TokenBridge: ETH is not supported");
+        require(_weth != address(0), "TokenBridge: ETH is not supported");
         _amountLD = _removeDust(_weth, _amountLD);
         require(_amountLD > 0, "TokenBridge: amount must be greater than 0");
         require(msg.value >= _amountLD, "TokenBridge: fee not enough");
@@ -105,22 +89,6 @@ contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
             lzEndpoint.estimateFees(aptosChainId, address(this), payload, payInZRO, _adapterParams);
     }
 
-    // ---------------------- owner functions ----------------------
-    function registerToken(address _token) external onlyOwner {
-        require(_token != address(0), "TokenBridge: invalid token address");
-        require(!supportedTokens[_token], "TokenBridge: token already registered");
-
-        uint8 localDecimals = _tokenDecimals(_token);
-        require(
-            localDecimals >= SHARED_DECIMALS,
-            "TokenBridge: decimals must be >= SHARED_DECIMALS"
-        );
-
-        supportedTokens[_token] = true;
-        ld2sdRates[_token] = 10**(localDecimals - SHARED_DECIMALS);
-        emit RegisterToken(_token);
-    }
-
     function setBridgeFeeBP(uint _bridgeFeeBP) external onlyOwner {
         require(_bridgeFeeBP <= BP_DENOMINATOR, "TokenBridge: bridge fee > 100%");
         bridgeFeeBP = _bridgeFeeBP;
@@ -136,11 +104,6 @@ contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
     function setGlobalPause(bool _paused) external onlyOwner {
         globalPaused = _paused;
         emit SetGlobalPause(_paused);
-    }
-
-    function setTokenPause(address _token, bool _paused) external onlyOwner {
-        pausedTokens[_token] = _paused;
-        emit SetTokenPause(_token, _paused);
     }
 
     function setAptosChainId(uint16 _aptosChainId) external onlyOwner {
@@ -210,8 +173,6 @@ contract TokenBridge is ITokenBridge, NonblockingLzApp, ReentrancyGuard {
         require(_srcChainId == aptosChainId, "TokenBridge: invalid source chain id");
 
         (address token, address to, uint64 amountSD, bool unwrap) = _decodeReceivePayload(_payload);
-        require(!globalPaused && !pausedTokens[token], "TokenBridge: paused");
-        require(supportedTokens[token], "TokenBridge: token is not supported");
 
         // sub tvl
         uint64 tvlSD = tvlSDs[token];
