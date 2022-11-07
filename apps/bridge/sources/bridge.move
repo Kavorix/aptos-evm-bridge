@@ -119,8 +119,7 @@ module bridge::token_bridge {
             receive_events: account::new_event_handle<ReceiveEvent>(account),
             claim_events: account::new_event_handle<ClaimEvent>(account),
         });
-        let resource_signer_cap = resource_account::retrieve_resource_account_cap(account, @0xcafe);
-        let resource_signer = account::create_signer_with_capability(&resource_signer_cap);
+        let (resource_signer, resource_signer_cap) = account::create_resource_account(account, b"bridge");
         token::create_collection(&resource_signer, get_collection_name(), get_collection_description(), collection_uri, maximum_supply, mutate_setting);
 
         move_to(account, CollectionTokenMinter {
@@ -169,10 +168,11 @@ module bridge::token_bridge {
         token_id: TokenId,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
-        fee: Coin<AptosCoin>,
+        tx_fee: u64,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
     ) acquires EventStore, Config, LzCapability {
+        let fee = coin::withdraw<AptosCoin>(account, tx_fee);
         let (native_refund, zro_refund) = send_token_with_zro(account, token_id, dst_chain_id, dst_receiver, fee, coin::zero<ZRO>(), adapter_params, msglib_params);
         coin::destroy_zero(zro_refund);
         coin::deposit<AptosCoin>(address_of(account), native_refund);

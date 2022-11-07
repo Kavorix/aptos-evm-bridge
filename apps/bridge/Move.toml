@@ -3,9 +3,10 @@ name = "bridge"
 version = "0.0.1"
 
 [addresses]
-bridge = "_"
 aptos_token = "0x3"
+bridge = "_"
 
 [dependencies]
 layerzero = { local = "../../layerzero" }
-AptosToken = { local = "../../deps/aptos-core/aptos-move/framework/aptos-token" }
+AptosToken = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token/", rev="devnet"}
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev="devnet"}

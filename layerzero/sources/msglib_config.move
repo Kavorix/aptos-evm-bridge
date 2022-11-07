@@ -3,6 +3,7 @@ module layerzero::msglib_config {
     use aptos_std::type_info::{TypeInfo, type_of};
     use layerzero_common::utils::{assert_u16, type_address, assert_type_signer };
     use std::error;
+    use std::signer;
     use aptos_std::event::{Self, EventHandle};
     use aptos_framework::account;
     use layerzero_common::semver::{Self, SemVer, build_version };
@@ -103,12 +104,14 @@ module layerzero::msglib_config {
     //
     // ua functions
     //
-    public(friend) fun init_msglib_config<UA>(account: &signer) {
+    public(friend) fun init_msglib_config<UA>(account: &signer){
         assert_type_signer<UA>(account);
-        move_to(account, MsgLibConfig {
-            send_version: table::new(),
-            receive_version: table::new(),
-        });
+        if(!exists<MsgLibConfig>(signer::address_of(account))){
+            move_to(account, MsgLibConfig {
+                send_version: table::new(),
+                receive_version: table::new(),
+            });
+        }
     }
 
     public(friend) fun set_send_msglib<UA>(chain_id: u64, version: SemVer) acquires MsgLibConfig, MsgLibRegistry {

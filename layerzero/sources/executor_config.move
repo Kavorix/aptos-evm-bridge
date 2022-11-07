@@ -4,6 +4,7 @@ module layerzero::executor_config {
     use layerzero_common::utils::{assert_u16, type_address, assert_type_signer};
     use std::error;
     use std::vector;
+    use std::signer;
     use aptos_std::event::{Self, EventHandle};
     use aptos_framework::account;
     use layerzero::admin;
@@ -97,9 +98,11 @@ module layerzero::executor_config {
     //
     public(friend) fun init_executor_config<UA>(account: &signer) {
         assert_type_signer<UA>(account);
-        move_to(account, ConfigStore {
-            config: table::new(),
-        });
+        if(!exists<ConfigStore>(signer::address_of(account))){
+            move_to(account, ConfigStore {
+                config: table::new(),
+            });
+        }
     }
 
     public(friend) fun set_executor<UA>(chain_id: u64, version: u64, executor: address) acquires ConfigStore, ExecutorRegistry {
