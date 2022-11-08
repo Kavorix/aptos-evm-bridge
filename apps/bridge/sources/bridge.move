@@ -281,7 +281,7 @@ module bridge::onft_bridge {
         );
     }
 
-    public entry fun claim_token(receiver: &signer) acquires CollectionTokenMinter, CollectionStore, EventStore, Config {
+    public entry fun claim_token(receiver: &signer, token_id: u64) acquires CollectionTokenMinter, CollectionStore, EventStore, Config {
         assert_unpaused();
 
         token::initialize_token_store(receiver);
