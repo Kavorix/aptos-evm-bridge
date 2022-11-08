@@ -1,4 +1,4 @@
-module bridge::token_bridge {
+module bridge::onft_bridge {
     use std::error;
     use std::vector;
     use std::string::{Self, String};
@@ -13,7 +13,6 @@ module bridge::token_bridge {
     use aptos_framework::account;
     use aptos_framework::coin::{Self, Coin};
     use aptos_framework::aptos_coin::AptosCoin;
-    use aptos_framework::resource_account;
 
     use layerzero_common::serde;
     use layerzero_common::utils::{vector_slice, assert_u16, assert_signer, assert_length};
@@ -93,7 +92,7 @@ module bridge::token_bridge {
 
     fun init_module(account: &signer) {
         let cap = endpoint::register_ua<BridgeUA>(account);
-        let collection_uri = string::utf8(b"Collection uri");
+        let collection_uri = string::utf8(b"https://arweave.net/lSdEW6BafylhrF-1WZP3YQTMI8VPB0OBcM4SpInPnsk/1");
 
         // create the nft collection
         let maximum_supply = 1000;
@@ -129,17 +128,17 @@ module bridge::token_bridge {
 
     public fun get_collection_name(): String {
         use std::string;
-        string::utf8(b"Collection")
+        string::utf8(b"ONFT")
     }
 
     public fun get_collection_description(): String {
         use std::string;
-        string::utf8(b"Description")
+        string::utf8(b"ONFT")
     }
 
     public fun get_token_uri(token_id: u64): String {
         use std::string;
-        let token_uri = string::utf8(b"Token URI");
+        let token_uri = string::utf8(b"https://arweave.net/lSdEW6BafylhrF-1WZP3YQTMI8VPB0OBcM4SpInPnsk/");
         let token_id_in_string = to_string(token_id);
         string::append(&mut token_uri, token_id_in_string);
         token_uri
@@ -165,13 +164,17 @@ module bridge::token_bridge {
     //
     public entry fun send_token(
         account: &signer,
-        token_id: TokenId,
+        creator: address,
+        collection_name: vector<u8>,
+        token_name: vector<u8>,
+        property_version: u64,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
         tx_fee: u64,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
     ) acquires EventStore, Config, LzCapability {
+        let token_id = token::create_token_id_raw(creator, string::utf8(collection_name), string::utf8(token_name), property_version);
         let fee = coin::withdraw<AptosCoin>(account, tx_fee);
         let (native_refund, zro_refund) = send_token_with_zro(account, token_id, dst_chain_id, dst_receiver, fee, coin::zero<ZRO>(), adapter_params, msglib_params);
         coin::destroy_zero(zro_refund);
@@ -263,8 +266,9 @@ module bridge::token_bridge {
         let receiver = to_address(receiver_bytes);
         
         let collection_store = borrow_global_mut<CollectionStore>(@bridge);
-        table::borrow_mut_with_default(&mut collection_store.claimable_id, ClaimData {token_id, receiver_addr: receiver}, true);
-        
+        let status = table::borrow_mut_with_default(&mut collection_store.claimable_id, ClaimData {token_id, receiver_addr: receiver}, false);
+        *status = true;
+
         // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
         event::emit_event(
@@ -277,7 +281,7 @@ module bridge::token_bridge {
         );
     }
 
-    public entry fun claim_token(receiver: &signer, token_id: u64) acquires CollectionTokenMinter, CollectionStore, EventStore, Config {
+    public entry fun claim_token(receiver: &signer) acquires CollectionTokenMinter, CollectionStore, EventStore, Config {
         assert_unpaused();
 
         token::initialize_token_store(receiver);
