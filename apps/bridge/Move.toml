@@ -1,6 +1,7 @@
 [package]
 name = "bridge"
 version = "0.0.1"
+upgrade_policy = "compatible"
 
 [addresses]
 aptos_token = "0x3"
