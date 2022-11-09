@@ -9,5 +9,5 @@ bridge = "_"
 
 [dependencies]
 layerzero = { local = "../../layerzero" }
-AptosToken = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token/", rev="devnet"}
-AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev="devnet"}
+AptosToken = { local = "../../deps/aptos-core/aptos-move/framework/aptos-token" }
+AptosFramework = {{ local = "../../deps/aptos-core/aptos-move/framework/aptos-framework" }
