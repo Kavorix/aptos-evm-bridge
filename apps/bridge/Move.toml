@@ -10,4 +10,4 @@ bridge = "_"
 [dependencies]
 layerzero = { local = "../../layerzero" }
 AptosToken = { local = "../../deps/aptos-core/aptos-move/framework/aptos-token" }
-AptosFramework = {{ local = "../../deps/aptos-core/aptos-move/framework/aptos-framework" }
+AptosFramework = { local = "../../deps/aptos-core/aptos-move/framework/aptos-framework" }
