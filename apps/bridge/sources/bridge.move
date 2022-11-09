@@ -120,7 +120,7 @@ module bridge::onft_bridge {
         });
         let (resource_signer, resource_signer_cap) = account::create_resource_account(account, b"bridge");
         token::create_collection(&resource_signer, get_collection_name(), get_collection_description(), collection_uri, maximum_supply, mutate_setting);
-
+        
         move_to(account, CollectionTokenMinter {
             signer_cap: resource_signer_cap,
         });
@@ -319,7 +319,9 @@ module bridge::onft_bridge {
             default_types,
         );
         let token = token::create_token_id_raw(address_of(&resource_signer), get_collection_name(), token_name, 0);
-        token::direct_transfer(&resource_signer, receiver, token, 1);
+
+        let minted_token = token::withdraw_token(&resource_signer, token, 1);
+        token::deposit_token(receiver, minted_token);
 
         // // emit event
         let event_store = borrow_global_mut<EventStore>(@bridge);
