@@ -173,7 +173,7 @@ module bridge::onft_bridge {
         tx_fee: u64,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ) acquires EventStore, Config, LzCapability {
+    ) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
         let token_id = token::create_token_id_raw(creator, string::utf8(collection_name), string::utf8(token_name), property_version);
         let fee = coin::withdraw<AptosCoin>(account, tx_fee);
         let (native_refund, zro_refund) = send_token_with_zro(account, token_id, dst_chain_id, dst_receiver, fee, coin::zero<ZRO>(), adapter_params, msglib_params);
@@ -190,7 +190,7 @@ module bridge::onft_bridge {
         zro_fee: Coin<ZRO>,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): (Coin<AptosCoin>, Coin<ZRO>) acquires EventStore, Config, LzCapability {
+    ): (Coin<AptosCoin>, Coin<ZRO>) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
 
         let (native_refund, zro_refund) = send_token_internal(account, token_id, dst_chain_id, dst_receiver, native_fee, zro_fee, adapter_params, msglib_params);
         (native_refund, zro_refund)
@@ -205,16 +205,16 @@ module bridge::onft_bridge {
         zro_fee: Coin<ZRO>,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
-    ): (Coin<AptosCoin>, Coin<ZRO>) acquires EventStore, Config, LzCapability {
+    ): (Coin<AptosCoin>, Coin<ZRO>) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
         let (creator, collection_name, token_name, _) = get_token_id_fields(&token_id);
 
         assert_registered_collection(creator, collection_name);
         assert_unpaused();
         assert_u16(dst_chain_id);
-        assert_length(&dst_receiver, 32);
+        assert_length(&dst_receiver, 20);
 
         // burn the token
-        token::burn(account, @bridge, collection_name, token_name, 0, 1);
+        token::burn(account, creator, collection_name, token_name, 0, 1);
 
         // check gas limit with adapter params
         check_adapter_params(dst_chain_id, &adapter_params);
@@ -294,9 +294,9 @@ module bridge::onft_bridge {
         let claimable_ld = table::remove(&mut token_store.claimable_id, ClaimData {token_id, receiver_addr});
         assert!(claimable_ld, error::not_found(EBRIDGE_CLAIMABLE_TOKEN_NOT_FOUND));
 
-        let default_keys = vector<String>[ string::utf8(b"attack"), string::utf8(b"num_of_use") ];
-        let default_vals = vector<vector<u8>>[ bcs::to_bytes<u64>(&10), bcs::to_bytes<u64>(&5) ];
-        let default_types = vector<String>[ string::utf8(b"u64"), string::utf8(b"u64") ];
+        let default_keys = vector<String>[ string::utf8(b"attack"), string::utf8(b"num_of_use") , string::utf8(b"TOKEN_BURNABLE_BY_OWNER")];
+        let default_vals = vector<vector<u8>>[ bcs::to_bytes<u64>(&10), bcs::to_bytes<u64>(&5),bcs::to_bytes<bool>(&true)];
+        let default_types = vector<String>[ string::utf8(b"u64"), string::utf8(b"u64") , string::utf8(b"bool")];
         let mutate_setting = vector<bool>[ false, false, false, false, false, false ];
         let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
         let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
@@ -340,7 +340,7 @@ module bridge::onft_bridge {
 
     // encode payload: packet type(1) + receiver(32) + token_id(8)
     fun encode_send_payload(dst_receiver: vector<u8>, token_id: u64): vector<u8> {
-        assert_length(&dst_receiver, 32);
+        assert_length(&dst_receiver, 20);
 
         let payload = vector::empty<u8>();
         serde::serialize_u8(&mut payload, PSEND);
@@ -370,10 +370,12 @@ module bridge::onft_bridge {
         }
     }
 
-    fun assert_registered_collection(creator: address, collection_name: String) acquires Config {
+    fun assert_registered_collection(creator: address, collection_name: String) acquires CollectionTokenMinter, Config {
         let config = borrow_global<Config>(@bridge);
+        let collection_token_minter = borrow_global_mut<CollectionTokenMinter>(@bridge);
+        let resource_signer = account::create_signer_with_capability(&collection_token_minter.signer_cap);
         assert!(
-            @bridge == creator && collection_name == config.collection_name,
+            address_of(&resource_signer) == creator && collection_name == config.collection_name,
             error::not_found(EBRIDGE_UNREGISTERED_COLLECTION),
         );
     }
@@ -394,5 +396,16 @@ module bridge::onft_bridge {
         };
         vector::reverse(&mut buffer);
         string::utf8(buffer)
+    }
+
+    #[test(creator = @creator)]
+    public entry fun create_resource_account(creator: signer) {
+        use aptos_framework::account;
+        use aptos_std::debug;
+        use std::signer;
+        let creator_addr = signer::address_of(&creator);
+        let seed = b"bridge";
+        let addr = account::create_resource_address(&creator_addr, seed);
+        debug::print(&addr);
     }
 }

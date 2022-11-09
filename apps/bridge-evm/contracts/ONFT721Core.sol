@@ -83,12 +83,12 @@ abstract contract ONFT721Core is NonblockingLzApp, ERC165, IONFT721Core {
             uint64 tokenID
         )
     {
-        require(_payload.length == 41, "ONFTBridge: invalid payload length");
+        require(_payload.length == 29, "ONFTBridge: invalid payload length");
         PacketType packetType = PacketType(uint8(_payload[0]));
         require(packetType == PacketType.RECEIVE_FROM_APTOS, "ONFTBridge: unknown packet type");
         assembly {
-            toAddress := mload(add(_payload, 33))
-            tokenID := mload(add(_payload, 41))
+            toAddress := mload(add(_payload, 21))
+            tokenID := mload(add(_payload, 29))
         }
     }
 
