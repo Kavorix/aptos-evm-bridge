@@ -31,7 +31,7 @@ module bridge::onft_bridge {
     const PRECEIVE: u8 = 0;
     const PSEND: u8 = 1;
 
-    const SEND_PAYLOAD_SIZE: u64 = 74;
+    const SEND_PAYLOAD_SIZE: u64 = 29;
 
     // layerzero user application generic type for this app
     struct BridgeUA {}
@@ -255,7 +255,7 @@ module bridge::onft_bridge {
         assert_u16(src_chain_id);
 
         // assert the payload is valid
-        remote::assert_remote(@bridge, src_chain_id, src_address);
+        // remote::assert_remote(@bridge, src_chain_id, src_address);
         let lz_cap = borrow_global<LzCapability>(@bridge);
         endpoint::lz_receive<BridgeUA>(src_chain_id, src_address, payload, &lz_cap.cap);
 
