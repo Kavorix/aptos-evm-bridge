@@ -163,22 +163,26 @@ module bridge::onft_bridge {
     // token transfer functions
     //
     public entry fun send_token(
-        account: &signer,
+        sender: &signer,
         creator: address,
         collection_name: vector<u8>,
         token_name: vector<u8>,
         property_version: u64,
         dst_chain_id: u64,
         dst_receiver: vector<u8>,
-        tx_fee: u64,
+        native_fee: u64,
+        zro_fee: u64,
         adapter_params: vector<u8>,
         msglib_params: vector<u8>,
     ) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
         let token_id = token::create_token_id_raw(creator, string::utf8(collection_name), string::utf8(token_name), property_version);
-        let fee = coin::withdraw<AptosCoin>(account, tx_fee);
-        let (native_refund, zro_refund) = send_token_with_zro(account, token_id, dst_chain_id, dst_receiver, fee, coin::zero<ZRO>(), adapter_params, msglib_params);
-        coin::destroy_zero(zro_refund);
-        coin::deposit<AptosCoin>(address_of(account), native_refund);
+        let native_fee = withdraw_coin_if_needed<AptosCoin>(sender, native_fee);
+        let zero_fee = withdraw_coin_if_needed<ZRO>(sender, zro_fee);
+        let (native_refund, zro_refund) = send_token_with_zro(sender, token_id, dst_chain_id, dst_receiver, native_fee, zero_fee, adapter_params, msglib_params);
+        
+        let sender_addr = address_of(sender);
+        deposit_coin_if_needed(sender_addr, native_refund);
+        deposit_coin_if_needed(sender_addr, zro_refund);
     }
 
     public fun send_token_with_zro(
@@ -207,19 +211,16 @@ module bridge::onft_bridge {
         msglib_params: vector<u8>,
     ): (Coin<AptosCoin>, Coin<ZRO>) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
         let (creator, collection_name, token_name, _) = get_token_id_fields(&token_id);
-
         assert_registered_collection(creator, collection_name);
         assert_unpaused();
         assert_u16(dst_chain_id);
         assert_length(&dst_receiver, 20);
-
         // burn the token
         token::burn(account, creator, collection_name, token_name, 0, 1);
 
         // check gas limit with adapter params
         check_adapter_params(dst_chain_id, &adapter_params);
-
-        let payload = encode_send_payload(dst_receiver, serde::deserialize_u64(string::bytes(&token_name)));
+        let payload = encode_send_payload(dst_receiver, to_u64(token_name));
 
         // send lz msg to remote bridge
         let lz_cap = borrow_global<LzCapability>(@bridge);
@@ -341,7 +342,6 @@ module bridge::onft_bridge {
     // encode payload: packet type(1) + receiver(32) + token_id(8)
     fun encode_send_payload(dst_receiver: vector<u8>, token_id: u64): vector<u8> {
         assert_length(&dst_receiver, 20);
-
         let payload = vector::empty<u8>();
         serde::serialize_u8(&mut payload, PSEND);
         serde::serialize_vector(&mut payload, dst_receiver);
@@ -396,6 +396,34 @@ module bridge::onft_bridge {
         };
         vector::reverse(&mut buffer);
         string::utf8(buffer)
+    }
+
+     fun to_u64(value: String): u64 {
+        let to_bytes = string::bytes(&value);
+        let length = vector::length(to_bytes);
+        let i = 0;
+        let num: u64 = 0;
+        while(i < length) {
+            num = num*10 + ((*vector::borrow(to_bytes, i) - 48) as u64);
+            i = i + 1;
+        };
+        num
+    }
+
+    fun withdraw_coin_if_needed<CoinType>(account: &signer, amount_ld: u64): Coin<CoinType> {
+        if (amount_ld > 0) {
+            coin::withdraw<CoinType>(account, amount_ld)
+        } else {
+            coin::zero<CoinType>()
+        }
+    }
+
+    fun deposit_coin_if_needed<CoinType>(account: address, coin: Coin<CoinType>) {
+        if (coin::value(&coin) > 0) {
+            coin::deposit(account, coin);
+        } else {
+            coin::destroy_zero(coin);
+        }
     }
 
     #[test(creator = @creator)]
