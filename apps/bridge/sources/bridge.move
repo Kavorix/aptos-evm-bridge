@@ -176,9 +176,9 @@ module bridge::onft_bridge {
         msglib_params: vector<u8>,
     ) acquires CollectionTokenMinter, EventStore, Config, LzCapability {
         let token_id = token::create_token_id_raw(creator, string::utf8(collection_name), string::utf8(token_name), property_version);
-        let native_fee = withdraw_coin_if_needed<AptosCoin>(sender, native_fee);
+        let tx_fee = withdraw_coin_if_needed<AptosCoin>(sender, native_fee);
         let zero_fee = withdraw_coin_if_needed<ZRO>(sender, zro_fee);
-        let (native_refund, zro_refund) = send_token_with_zro(sender, token_id, dst_chain_id, dst_receiver, native_fee, zero_fee, adapter_params, msglib_params);
+        let (native_refund, zro_refund) = send_token_with_zro(sender, token_id, dst_chain_id, dst_receiver, tx_fee, zero_fee, adapter_params, msglib_params);
         
         let sender_addr = address_of(sender);
         deposit_coin_if_needed(sender_addr, native_refund);
